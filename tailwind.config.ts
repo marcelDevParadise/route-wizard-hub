@@ -26,7 +26,18 @@ export default {
 				foreground: 'hsl(var(--foreground))',
 				primary: {
 					DEFAULT: 'hsl(var(--primary))',
-					foreground: 'hsl(var(--primary-foreground))'
+					foreground: 'hsl(var(--primary-foreground))',
+					hover: 'hsl(var(--primary-hover))',
+					glow: 'hsl(var(--primary-glow))'
+				},
+				travel: {
+					DEFAULT: 'hsl(var(--travel))',
+					foreground: 'hsl(var(--travel-foreground))',
+					light: 'hsl(var(--travel-light))'
+				},
+				nav: {
+					surface: 'hsl(var(--nav-surface))',
+					border: 'hsl(var(--nav-border))'
 				},
 				secondary: {
 					DEFAULT: 'hsl(var(--secondary))',

@@ -1,0 +1,232 @@
+import { useState } from "react";
+import { Plus, Navigation, MapPin, Car, User, Settings, BarChart3 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+
+interface Waypoint {
+  id: string;
+  label: string;
+  address: string;
+  lat?: number;
+  lng?: number;
+}
+
+export function RouteSidebar() {
+  const [mode, setMode] = useState<'car' | 'walking'>('car');
+  const [waypoints, setWaypoints] = useState<Waypoint[]>([
+    { id: 'start', label: 'Start', address: 'Berlin, Deutschland' },
+    { id: 'end', label: 'Ziel', address: 'Paris, Frankreich' }
+  ]);
+  const [avoidTolls, setAvoidTolls] = useState(false);
+  const [avoidHighways, setAvoidHighways] = useState(false);
+  const [fastestRoute, setFastestRoute] = useState(true);
+
+  const addWaypoint = () => {
+    const waypointNumber = waypoints.length - 1;
+    const newWaypoint: Waypoint = {
+      id: `waypoint-${Date.now()}`,
+      label: `Zwischenziel ${waypointNumber}`,
+      address: ''
+    };
+    
+    // Insert before the last item (destination)
+    const newWaypoints = [...waypoints];
+    newWaypoints.splice(waypoints.length - 1, 0, newWaypoint);
+    setWaypoints(newWaypoints);
+  };
+
+  const removeWaypoint = (id: string) => {
+    setWaypoints(waypoints.filter(w => w.id !== id));
+  };
+
+  const updateWaypointAddress = (id: string, address: string) => {
+    setWaypoints(waypoints.map(w => 
+      w.id === id ? { ...w, address } : w
+    ));
+  };
+
+  return (
+    <div className="w-80 bg-nav-surface border-r border-nav-border h-full overflow-y-auto p-4 space-y-6">
+      {/* Mode Selection */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Navigation className="h-4 w-4" />
+            Routenmodus
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2">
+            <Button
+              variant={mode === 'car' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setMode('car')}
+              className="flex-1"
+            >
+              <Car className="h-4 w-4 mr-2" />
+              Auto
+            </Button>
+            <Button
+              variant={mode === 'walking' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setMode('walking')}
+              className="flex-1"
+            >
+              <User className="h-4 w-4 mr-2" />
+              Zu Fuß
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Waypoints */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <MapPin className="h-4 w-4" />
+            Routenpunkte
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {waypoints.map((waypoint, index) => (
+            <div key={waypoint.id} className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${
+                  index === 0 ? 'bg-travel' : 
+                  index === waypoints.length - 1 ? 'bg-destructive' : 
+                  'bg-primary'
+                }`} />
+                <Label className="text-sm font-medium">
+                  {waypoint.label}
+                </Label>
+                {index > 0 && index < waypoints.length - 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeWaypoint(waypoint.id)}
+                    className="ml-auto h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                  >
+                    ×
+                  </Button>
+                )}
+              </div>
+              <Input
+                placeholder={`Adresse eingeben...`}
+                value={waypoint.address}
+                onChange={(e) => updateWaypointAddress(waypoint.id, e.target.value)}
+                className="text-sm"
+              />
+            </div>
+          ))}
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={addWaypoint}
+            className="w-full mt-3"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Zwischenziel hinzufügen
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Route Options */}
+      {mode === 'car' && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Settings className="h-4 w-4" />
+              Routenoptionen
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="fastest" className="text-sm">
+                {fastestRoute ? 'Schnellste Route' : 'Kürzeste Route'}
+              </Label>
+              <Switch
+                id="fastest"
+                checked={fastestRoute}
+                onCheckedChange={setFastestRoute}
+              />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <Label htmlFor="tolls" className="text-sm">Maut vermeiden</Label>
+              <Switch
+                id="tolls"
+                checked={avoidTolls}
+                onCheckedChange={setAvoidTolls}
+              />
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <Label htmlFor="highways" className="text-sm">Autobahnen vermeiden</Label>
+              <Switch
+                id="highways"
+                checked={avoidHighways}
+                onCheckedChange={setAvoidHighways}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Calculate Button */}
+      <Button size="lg" className="w-full" variant="navigation">
+        <Navigation className="h-4 w-4 mr-2" />
+        Route berechnen
+      </Button>
+
+      {/* Dashboard Link */}
+      <Link to="/dashboard">
+        <Button variant="outline" size="sm" className="w-full">
+          <BarChart3 className="h-4 w-4 mr-2" />
+          Gespeicherte Routen
+        </Button>
+      </Link>
+
+      {/* Route Results */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Routendetails</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Entfernung:</span>
+            <Badge variant="secondary">1.034 km</Badge>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Fahrzeit:</span>
+            <Badge variant="secondary">9h 45min</Badge>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Zwischenziele:</span>
+            <Badge variant="outline">{waypoints.length - 2}</Badge>
+          </div>
+          
+          <Separator className="my-3" />
+          
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Navigation</h4>
+            <div className="space-y-1 text-sm text-muted-foreground">
+              <div>1. Starten Sie in Berlin</div>
+              <div>2. Fahren Sie auf die A2 Richtung Hannover</div>
+              <div>3. Weiter auf A2/A30 Richtung Köln</div>
+              <div>4. Über A4 nach Frankfurt</div>
+              <div>5. A5 Richtung Basel nehmen</div>
+              <div>6. In Frankreich weiter nach Paris</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
