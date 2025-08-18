@@ -17,28 +17,33 @@ interface Waypoint {
   lng?: number;
 }
 
-export function RouteSidebar() {
+interface RouteData {
+  distance: string;
+  duration: string;
+  instructions: string[];
+}
+
+interface RouteSidebarProps {
+  waypoints: Waypoint[];
+  setWaypoints: (waypoints: Waypoint[]) => void;
+  routeData: RouteData | null;
+  setRouteData: (data: RouteData) => void;
+  isCalculating: boolean;
+  setIsCalculating: (calculating: boolean) => void;
+}
+
+export function RouteSidebar({ 
+  waypoints, 
+  setWaypoints, 
+  routeData, 
+  setRouteData, 
+  isCalculating, 
+  setIsCalculating 
+}: RouteSidebarProps) {
   const [mode, setMode] = useState<'car' | 'walking'>('car');
-  const [waypoints, setWaypoints] = useState<Waypoint[]>([
-    { id: 'start', label: 'Start', address: 'Berlin, Deutschland' },
-    { id: 'end', label: 'Ziel', address: 'Paris, Frankreich' }
-  ]);
   const [avoidTolls, setAvoidTolls] = useState(false);
   const [avoidHighways, setAvoidHighways] = useState(false);
   const [fastestRoute, setFastestRoute] = useState(true);
-  const [isCalculating, setIsCalculating] = useState(false);
-  const [routeData, setRouteData] = useState({
-    distance: '1.034 km',
-    duration: '9h 45min',
-    instructions: [
-      '1. Starten Sie in Berlin',
-      '2. Fahren Sie auf die A2 Richtung Hannover',
-      '3. Weiter auf A2/A30 Richtung Köln',
-      '4. Über A4 nach Frankfurt',
-      '5. A5 Richtung Basel nehmen',
-      '6. In Frankreich weiter nach Paris'
-    ]
-  });
 
   const addWaypoint = () => {
     const waypointNumber = waypoints.length - 1;
@@ -261,14 +266,22 @@ export function RouteSidebar() {
           <CardTitle className="text-base">Routendetails</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Entfernung:</span>
-            <Badge variant="secondary">{routeData.distance}</Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Fahrzeit:</span>
-            <Badge variant="secondary">{routeData.duration}</Badge>
-          </div>
+          {routeData ? (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Entfernung:</span>
+                <Badge variant="secondary">{routeData.distance}</Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Fahrzeit:</span>
+                <Badge variant="secondary">{routeData.duration}</Badge>
+              </div>
+            </>
+          ) : (
+            <div className="text-sm text-muted-foreground text-center py-4">
+              Klicken Sie auf "Route berechnen" um Routendetails zu sehen
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Zwischenziele:</span>
             <Badge variant="outline">{waypoints.length - 2}</Badge>
@@ -276,14 +289,16 @@ export function RouteSidebar() {
           
           <Separator className="my-3" />
           
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium">Navigation</h4>
-            <div className="space-y-1 text-sm text-muted-foreground">
-              {routeData.instructions.map((instruction, index) => (
-                <div key={index}>{instruction}</div>
-              ))}
+          {routeData ? (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium">Navigation</h4>
+              <div className="space-y-1 text-sm text-muted-foreground">
+                {routeData.instructions.map((instruction, index) => (
+                  <div key={index}>{instruction}</div>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>

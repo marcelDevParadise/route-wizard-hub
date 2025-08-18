@@ -3,9 +3,29 @@ import { Header } from "@/components/layout/Header";
 import { RouteSidebar } from "@/components/sidebar/RouteSidebar";
 import { MapContainer } from "@/components/map/MapContainer";
 
+interface Waypoint {
+  id: string;
+  label: string;
+  address: string;
+  lat?: number;
+  lng?: number;
+}
+
+interface RouteData {
+  distance: string;
+  duration: string;
+  instructions: string[];
+}
+
 const Index = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isDark, setIsDark] = useState(false);
+  const [waypoints, setWaypoints] = useState<Waypoint[]>([
+    { id: 'start', label: 'Start', address: 'Berlin, Deutschland' },
+    { id: 'end', label: 'Ziel', address: 'Paris, Frankreich' }
+  ]);
+  const [routeData, setRouteData] = useState<RouteData | null>(null);
+  const [isCalculating, setIsCalculating] = useState(false);
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
   const toggleTheme = () => {
@@ -44,12 +64,24 @@ const Index = () => {
           ${sidebarOpen ? 'lg:relative' : 'lg:w-0 lg:overflow-hidden'}
           absolute lg:relative z-10 lg:z-auto
         `}>
-          <RouteSidebar />
+          <RouteSidebar 
+            waypoints={waypoints}
+            setWaypoints={setWaypoints}
+            routeData={routeData}
+            setRouteData={setRouteData}
+            isCalculating={isCalculating}
+            setIsCalculating={setIsCalculating}
+          />
         </div>
         
         {/* Map */}
         <div className="flex-1 relative">
-          <MapContainer className="h-full w-full" />
+          <MapContainer 
+            className="h-full w-full" 
+            waypoints={waypoints}
+            routeData={routeData}
+            isCalculating={isCalculating}
+          />
           
           {/* Mobile overlay when sidebar is open */}
           {sidebarOpen && (
