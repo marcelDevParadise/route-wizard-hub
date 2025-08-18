@@ -26,6 +26,19 @@ export function RouteSidebar() {
   const [avoidTolls, setAvoidTolls] = useState(false);
   const [avoidHighways, setAvoidHighways] = useState(false);
   const [fastestRoute, setFastestRoute] = useState(true);
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [routeData, setRouteData] = useState({
+    distance: '1.034 km',
+    duration: '9h 45min',
+    instructions: [
+      '1. Starten Sie in Berlin',
+      '2. Fahren Sie auf die A2 Richtung Hannover',
+      '3. Weiter auf A2/A30 Richtung Köln',
+      '4. Über A4 nach Frankfurt',
+      '5. A5 Richtung Basel nehmen',
+      '6. In Frankreich weiter nach Paris'
+    ]
+  });
 
   const addWaypoint = () => {
     const waypointNumber = waypoints.length - 1;
@@ -49,6 +62,49 @@ export function RouteSidebar() {
     setWaypoints(waypoints.map(w => 
       w.id === id ? { ...w, address } : w
     ));
+  };
+
+  const calculateRoute = async () => {
+    // Validate that start and end addresses are filled
+    const startWaypoint = waypoints.find(w => w.id === 'start');
+    const endWaypoint = waypoints.find(w => w.id === 'end');
+    
+    if (!startWaypoint?.address || !endWaypoint?.address) {
+      alert('Bitte geben Sie Start- und Zieladresse ein.');
+      return;
+    }
+
+    setIsCalculating(true);
+    
+    try {
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // TODO: Implement actual routing API call
+      // For now, update with sample data based on current waypoints
+      const waypointCount = waypoints.length - 2; // Exclude start and end
+      const baseDistance = 500 + waypointCount * 150; // km
+      const baseDuration = Math.floor(baseDistance / 80); // hours at ~80km/h
+      
+      setRouteData({
+        distance: `${baseDistance.toLocaleString('de-DE')} km`,
+        duration: `${baseDuration}h ${Math.floor((baseDistance % 80) * 0.75)}min`,
+        instructions: [
+          `1. Starten Sie in ${startWaypoint.address}`,
+          ...waypoints
+            .filter(w => w.id !== 'start' && w.id !== 'end' && w.address)
+            .map((w, i) => `${i + 2}. Fahren Sie nach ${w.address}`),
+          `${waypoints.length}. Erreichen Sie Ihr Ziel in ${endWaypoint.address}`
+        ]
+      });
+      
+      console.log('Route berechnet:', { mode, waypoints, avoidTolls, avoidHighways, fastestRoute });
+    } catch (error) {
+      console.error('Fehler bei Routenberechnung:', error);
+      alert('Fehler bei der Routenberechnung. Bitte versuchen Sie es erneut.');
+    } finally {
+      setIsCalculating(false);
+    }
   };
 
   return (
@@ -180,9 +236,15 @@ export function RouteSidebar() {
       )}
 
       {/* Calculate Button */}
-      <Button size="lg" className="w-full" variant="navigation">
+      <Button 
+        size="lg" 
+        className="w-full" 
+        variant="navigation"
+        onClick={calculateRoute}
+        disabled={isCalculating}
+      >
         <Navigation className="h-4 w-4 mr-2" />
-        Route berechnen
+        {isCalculating ? 'Berechne Route...' : 'Route berechnen'}
       </Button>
 
       {/* Dashboard Link */}
@@ -201,11 +263,11 @@ export function RouteSidebar() {
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Entfernung:</span>
-            <Badge variant="secondary">1.034 km</Badge>
+            <Badge variant="secondary">{routeData.distance}</Badge>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Fahrzeit:</span>
-            <Badge variant="secondary">9h 45min</Badge>
+            <Badge variant="secondary">{routeData.duration}</Badge>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Zwischenziele:</span>
@@ -217,12 +279,9 @@ export function RouteSidebar() {
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Navigation</h4>
             <div className="space-y-1 text-sm text-muted-foreground">
-              <div>1. Starten Sie in Berlin</div>
-              <div>2. Fahren Sie auf die A2 Richtung Hannover</div>
-              <div>3. Weiter auf A2/A30 Richtung Köln</div>
-              <div>4. Über A4 nach Frankfurt</div>
-              <div>5. A5 Richtung Basel nehmen</div>
-              <div>6. In Frankreich weiter nach Paris</div>
+              {routeData.instructions.map((instruction, index) => (
+                <div key={index}>{instruction}</div>
+              ))}
             </div>
           </div>
         </CardContent>
