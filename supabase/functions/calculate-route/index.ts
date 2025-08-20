@@ -94,7 +94,8 @@ serve(async (req) => {
       if (avoidTolls) options.avoid_features.push('tollways');
       if (avoidHighways) options.avoid_features.push('highways');
       
-      options.preference = fastestRoute ? 'fastest' : 'shortest';
+      // Note: OpenRouteService uses different optimization approach
+      // The fastest/shortest preference is handled by the profile itself
     }
 
     // Call OpenRouteService Directions API
