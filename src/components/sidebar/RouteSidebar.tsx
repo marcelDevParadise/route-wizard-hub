@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Navigation, MapPin, Car, User, Settings, BarChart3 } from "lucide-react";
+import { Plus, Navigation, MapPin, Car, User, Settings, BarChart3, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
@@ -22,7 +22,7 @@ interface RouteData {
   distance: string;
   duration: string;
   instructions: string[];
-  geometry?: any;
+  geometry?: any;           // GeoJSON LineString (LngLat) ODER [lat,lng][] im Fallback
   waypoints?: Waypoint[];
 }
 
@@ -35,86 +35,107 @@ interface RouteSidebarProps {
   setIsCalculating: (calculating: boolean) => void;
 }
 
-export function RouteSidebar({ 
-  waypoints, 
-  setWaypoints, 
-  routeData, 
-  setRouteData, 
-  isCalculating, 
-  setIsCalculating 
+// ---- Server-Response-Typen passend zur Supabase Function ----
+type ServerRouteOk = {
+  distance: string;
+  duration: string;
+  instructions: string[];
+  geometry: { type: "LineString"; coordinates: [number, number][] }; // ORS GeoJSON (LngLat)
+  waypoints: Waypoint[];
+  fallback?: false;
+};
+
+type ServerRouteFallback = {
+  distance: string;
+  duration: string;
+  instructions: string[];
+  geometry: [number, number][]; // einfache Luftlinie [lat,lng]
+  waypoints: Waypoint[];
+  fallback: true;
+};
+
+type ServerRouteResponse = ServerRouteOk | ServerRouteFallback;
+
+export function RouteSidebar({
+  waypoints,
+  setWaypoints,
+  routeData,
+  setRouteData,
+  isCalculating,
+  setIsCalculating,
 }: RouteSidebarProps) {
-  const [mode, setMode] = useState<'car' | 'walking'>('car');
+  const [mode, setMode] = useState<"car" | "walking">("car");
   const [avoidTolls, setAvoidTolls] = useState(false);
   const [avoidHighways, setAvoidHighways] = useState(false);
   const [fastestRoute, setFastestRoute] = useState(true);
+  const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
 
   const addWaypoint = () => {
     const waypointNumber = waypoints.length - 1;
     const newWaypoint: Waypoint = {
       id: `waypoint-${Date.now()}`,
       label: `Zwischenziel ${waypointNumber}`,
-      address: ''
+      address: "",
     };
-    
-    // Insert before the last item (destination)
     const newWaypoints = [...waypoints];
     newWaypoints.splice(waypoints.length - 1, 0, newWaypoint);
     setWaypoints(newWaypoints);
   };
 
   const removeWaypoint = (id: string) => {
-    setWaypoints(waypoints.filter(w => w.id !== id));
+    setWaypoints(waypoints.filter((w) => w.id !== id));
   };
 
   const updateWaypointAddress = (id: string, address: string) => {
-    setWaypoints(waypoints.map(w => 
-      w.id === id ? { ...w, address } : w
-    ));
+    setWaypoints(waypoints.map((w) => (w.id === id ? { ...w, address } : w)));
   };
 
   const calculateRoute = async () => {
-    // Validate that start and end addresses are filled
-    const startWaypoint = waypoints.find(w => w.id === 'start');
-    const endWaypoint = waypoints.find(w => w.id === 'end');
-    
+    const startWaypoint = waypoints.find((w) => w.id === "start");
+    const endWaypoint = waypoints.find((w) => w.id === "end");
+
     if (!startWaypoint?.address || !endWaypoint?.address) {
-      alert('Bitte geben Sie Start- und Zieladresse ein.');
+      alert("Bitte geben Sie Start- und Zieladresse ein.");
       return;
     }
 
     setIsCalculating(true);
-    
+    setFallbackNotice(null);
+
     try {
-      const { data, error } = await supabase.functions.invoke('calculate-route', {
+      const { data, error } = await supabase.functions.invoke<ServerRouteResponse>("calculate-route", {
         body: {
           waypoints,
           mode,
           avoidTolls,
           avoidHighways,
-          fastestRoute
-        }
+          fastestRoute,
+        },
       });
 
-      if (error) {
-        throw new Error(error.message);
-      }
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error("Leere Antwort vom Server");
+      if ((data as any).error) throw new Error((data as any).error);
 
-      if (data.error) {
-        throw new Error(data.error);
+      // Fallback-Hinweis anzeigen, falls ORS keine echte Route liefern konnte
+      if ("fallback" in data && data.fallback) {
+        setFallbackNotice(
+          "Hinweis: ORS konnte keine Route liefern – es wird nur die Luftlinie zwischen den Punkten angezeigt."
+        );
       }
 
       setRouteData({
         distance: data.distance,
         duration: data.duration,
-        instructions: data.instructions,
-        geometry: data.geometry,
-        waypoints: data.waypoints
+        instructions: data.instructions ?? [],
+        geometry: data.geometry,   // MapContainer erkennt GeoJSON oder Fallback-Array
+        waypoints: data.waypoints,
       });
-      
-      console.log('Route berechnet:', data);
-    } catch (error) {
-      console.error('Fehler bei Routenberechnung:', error);
-      alert(`Fehler bei der Routenberechnung: ${error.message}`);
+
+      console.log("Route berechnet:", data);
+    } catch (err: any) {
+      console.error("Fehler bei Routenberechnung:", err);
+      alert(`Fehler bei der Routenberechnung: ${err?.message ?? err}`);
     } finally {
       setIsCalculating(false);
     }
@@ -133,18 +154,18 @@ export function RouteSidebar({
         <CardContent>
           <div className="flex gap-2">
             <Button
-              variant={mode === 'car' ? 'default' : 'outline'}
+              variant={mode === "car" ? "default" : "outline"}
               size="sm"
-              onClick={() => setMode('car')}
+              onClick={() => setMode("car")}
               className="flex-1"
             >
               <Car className="h-4 w-4 mr-2" />
               Auto
             </Button>
             <Button
-              variant={mode === 'walking' ? 'default' : 'outline'}
+              variant={mode === "walking" ? "default" : "outline"}
               size="sm"
-              onClick={() => setMode('walking')}
+              onClick={() => setMode("walking")}
               className="flex-1"
             >
               <User className="h-4 w-4 mr-2" />
@@ -166,14 +187,12 @@ export function RouteSidebar({
           {waypoints.map((waypoint, index) => (
             <div key={waypoint.id} className="space-y-2">
               <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${
-                  index === 0 ? 'bg-travel' : 
-                  index === waypoints.length - 1 ? 'bg-destructive' : 
-                  'bg-primary'
-                }`} />
-                <Label className="text-sm font-medium">
-                  {waypoint.label}
-                </Label>
+                <div
+                  className={`w-3 h-3 rounded-full ${
+                    index === 0 ? "bg-travel" : index === waypoints.length - 1 ? "bg-destructive" : "bg-primary"
+                  }`}
+                />
+                <Label className="text-sm font-medium">{waypoint.label}</Label>
                 {index > 0 && index < waypoints.length - 1 && (
                   <Button
                     variant="ghost"
@@ -193,13 +212,8 @@ export function RouteSidebar({
               />
             </div>
           ))}
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={addWaypoint}
-            className="w-full mt-3"
-          >
+
+          <Button variant="outline" size="sm" onClick={addWaypoint} className="w-full mt-3">
             <Plus className="h-4 w-4 mr-2" />
             Zwischenziel hinzufügen
           </Button>
@@ -207,7 +221,7 @@ export function RouteSidebar({
       </Card>
 
       {/* Route Options */}
-      {mode === 'car' && (
+      {mode === "car" && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -218,46 +232,32 @@ export function RouteSidebar({
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <Label htmlFor="fastest" className="text-sm">
-                {fastestRoute ? 'Schnellste Route' : 'Kürzeste Route'}
+                {fastestRoute ? "Schnellste Route" : "Kürzeste Route"}
               </Label>
-              <Switch
-                id="fastest"
-                checked={fastestRoute}
-                onCheckedChange={setFastestRoute}
-              />
+              <Switch id="fastest" checked={fastestRoute} onCheckedChange={setFastestRoute} />
             </div>
-            
+
             <div className="flex items-center justify-between">
-              <Label htmlFor="tolls" className="text-sm">Maut vermeiden</Label>
-              <Switch
-                id="tolls"
-                checked={avoidTolls}
-                onCheckedChange={setAvoidTolls}
-              />
+              <Label htmlFor="tolls" className="text-sm">
+                Maut vermeiden
+              </Label>
+              <Switch id="tolls" checked={avoidTolls} onCheckedChange={setAvoidTolls} />
             </div>
-            
+
             <div className="flex items-center justify-between">
-              <Label htmlFor="highways" className="text-sm">Autobahnen vermeiden</Label>
-              <Switch
-                id="highways"
-                checked={avoidHighways}
-                onCheckedChange={setAvoidHighways}
-              />
+              <Label htmlFor="highways" className="text-sm">
+                Autobahnen vermeiden
+              </Label>
+              <Switch id="highways" checked={avoidHighways} onCheckedChange={setAvoidHighways} />
             </div>
           </CardContent>
         </Card>
       )}
 
       {/* Calculate Button */}
-      <Button 
-        size="lg" 
-        className="w-full" 
-        variant="navigation"
-        onClick={calculateRoute}
-        disabled={isCalculating}
-      >
+      <Button size="lg" className="w-full" variant="navigation" onClick={calculateRoute} disabled={isCalculating}>
         <Navigation className="h-4 w-4 mr-2" />
-        {isCalculating ? 'Berechne Route...' : 'Route berechnen'}
+        {isCalculating ? "Berechne Route..." : "Route berechnen"}
       </Button>
 
       {/* Dashboard Link */}
@@ -287,16 +287,24 @@ export function RouteSidebar({
             </>
           ) : (
             <div className="text-sm text-muted-foreground text-center py-4">
-              Klicken Sie auf "Route berechnen" um Routendetails zu sehen
+              Klicken Sie auf &quot;Route berechnen&quot; um Routendetails zu sehen
             </div>
           )}
+
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Zwischenziele:</span>
-            <Badge variant="outline">{waypoints.length - 2}</Badge>
+            <Badge variant="outline">{Math.max(0, waypoints.length - 2)}</Badge>
           </div>
-          
+
+          {fallbackNotice && (
+            <div className="mt-2 flex items-center gap-2 text-amber-600 text-sm">
+              <AlertTriangle className="h-4 w-4" />
+              {fallbackNotice}
+            </div>
+          )}
+
           <Separator className="my-3" />
-          
+
           {routeData ? (
             <div className="space-y-2">
               <h4 className="text-sm font-medium">Navigation</h4>
