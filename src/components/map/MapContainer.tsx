@@ -139,9 +139,17 @@ export function MapContainer({ className, waypoints = [], routeData, isCalculati
     });
 
     // Add route polyline if route is calculated
-    if (routeData && routeData.geometry) {
-      // Use the actual route geometry from OpenRouteService
-      const routeCoords: [number, number][] = routeData.geometry;
+    if (routeData && routeData.geometry && Array.isArray(routeData.geometry)) {
+      // Filter out any null/invalid coordinates
+      const routeCoords: [number, number][] = routeData.geometry.filter(
+        (coord: any) => coord && 
+                      Array.isArray(coord) && 
+                      coord.length >= 2 && 
+                      typeof coord[0] === 'number' && 
+                      typeof coord[1] === 'number' &&
+                      !isNaN(coord[0]) && 
+                      !isNaN(coord[1])
+      );
       
       if (routeCoords.length >= 2) {
         const polyline = L.polyline(routeCoords, {

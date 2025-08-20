@@ -147,7 +147,9 @@ serve(async (req) => {
     );
 
     // Decode geometry for route visualization
-    const geometryCoords = route.geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]]); // [lng, lat] to [lat, lng]
+    const geometryCoords = route.geometry.coordinates
+      .filter((coord: number[]) => coord && coord.length >= 2 && !coord.some(isNaN))
+      .map((coord: number[]) => [coord[1], coord[0]]); // [lng, lat] to [lat, lng]
 
     const result = {
       distance: `${distanceKm.toLocaleString('de-DE')} km`,
