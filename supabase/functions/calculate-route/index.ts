@@ -122,8 +122,6 @@ serve(async (req) => {
       if (avoidTolls) avoid.push("tollways");
       if (avoidHighways) avoid.push("highways");
       if (avoid.length) options.avoid_features = avoid;
-      // fastest/shortest explizit setzen
-      options.preference = fastestRoute ? "fastest" : "shortest";
     }
 
     // ORS Request: GeoJSON als Geometrie erzwingen
@@ -136,6 +134,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         coordinates,                 // [[lon,lat], ...]
+        preference: fastestRoute ? "fastest" : "shortest",
         options: Object.keys(options).length ? options : undefined,
         instructions: true,
         geometry: true,
@@ -174,6 +173,7 @@ serve(async (req) => {
           waypoints: valid,
           fallback: true,
           errorMessage: `ORS error: ${errMsg}`,
+          debug: {profile, sentCoordinates: coordinates},
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -201,6 +201,7 @@ serve(async (req) => {
           waypoints: valid,
           fallback: true,
           errorMessage: "ORS lieferte keine Route zwischen den Punkten.",
+          debug: { profile, sentCoordinates: coordinates, orsShape: Object.keys(data || {}) },
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

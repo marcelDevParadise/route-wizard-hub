@@ -208,19 +208,36 @@ export function MapContainer({
     });
 
     // Route (ORS oder Array)
-    if (routeData?.geometry) {
-      const latLngs = toLeafletLatLngs(routeData.geometry);
-
-      if (latLngs.length >= 2) {
-        const polyline = L.polyline(latLngs, {
-          color: isCalculating ? '#94a3b8' : 'hsl(155, 75%, 40%)',
+    // Add route polyline if route is calculated
+    if (routeData && routeData.geometry) {
+      let routeCoords: [number, number][] = [];
+    
+      if (Array.isArray(routeData.geometry)) {
+        // Fallback: [lat,lng][] (Luftlinie)
+        routeCoords = routeData.geometry.filter(
+          (c: any) =>
+            Array.isArray(c) &&
+            c.length >= 2 &&
+            Number.isFinite(c[0]) &&
+            Number.isFinite(c[1])
+        );
+      } else if (routeData.geometry?.type === "LineString" && Array.isArray(routeData.geometry.coordinates)) {
+        // ORS GeoJSON: [[lon,lat], ...] -> für Leaflet drehen auf [lat,lng]
+        routeCoords = routeData.geometry.coordinates
+          .filter((c: any) => Array.isArray(c) && c.length >= 2 && Number.isFinite(c[0]) && Number.isFinite(c[1]))
+          .map(([lon, lat]: [number, number]) => [lat, lon]);
+      }
+    
+      if (routeCoords.length >= 2) {
+        const polyline = L.polyline(routeCoords, {
+          color: isCalculating ? "#94a3b8" : "hsl(155, 75%, 40%)",
           weight: 4,
           opacity: 0.9,
-          dashArray: isCalculating ? '6 6' : undefined,
+          dashArray: isCalculating ? "6 6" : undefined,
         }).addTo(map);
-
+      
         polylineRef.current = polyline;
-
+      
         const lineBounds = polyline.getBounds();
         if (lineBounds.isValid()) bounds.extend(lineBounds);
       }

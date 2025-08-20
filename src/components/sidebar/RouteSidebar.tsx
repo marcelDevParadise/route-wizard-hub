@@ -120,8 +120,11 @@ export function RouteSidebar({
       // Fallback-Hinweis anzeigen, falls ORS keine echte Route liefern konnte
       if ("fallback" in data && data.fallback) {
         setFallbackNotice(
-          "Hinweis: ORS konnte keine Route liefern – es wird nur die Luftlinie zwischen den Punkten angezeigt."
+          data.errorMessage
+            ? `Hinweis: ${data.errorMessage} — es wird nur die Luftlinie angezeigt.`
+            : "Hinweis: ORS konnte keine Route liefern — es wird nur die Luftlinie angezeigt."
         );
+        console.warn("Debug ORS:", data.debug);
       }
 
       setRouteData({
