@@ -137,8 +137,7 @@ serve(async (req) => {
         preference: fastestRoute ? "fastest" : "shortest",
         options: Object.keys(options).length ? options : undefined,
         instructions: true,
-        geometry: true,
-        geometry_format: "geojson",
+        geometry: "geojson",
         units: "km",
       }),
     });
