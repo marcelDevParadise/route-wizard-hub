@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Plus, Navigation, MapPin, Car, User, Settings, BarChart3 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,8 @@ interface RouteData {
   distance: string;
   duration: string;
   instructions: string[];
+  geometry?: any;
+  waypoints?: Waypoint[];
 }
 
 interface RouteSidebarProps {
@@ -82,31 +85,36 @@ export function RouteSidebar({
     setIsCalculating(true);
     
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // TODO: Implement actual routing API call
-      // For now, update with sample data based on current waypoints
-      const waypointCount = waypoints.length - 2; // Exclude start and end
-      const baseDistance = 500 + waypointCount * 150; // km
-      const baseDuration = Math.floor(baseDistance / 80); // hours at ~80km/h
-      
+      const { data, error } = await supabase.functions.invoke('calculate-route', {
+        body: {
+          waypoints,
+          mode,
+          avoidTolls,
+          avoidHighways,
+          fastestRoute
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
       setRouteData({
-        distance: `${baseDistance.toLocaleString('de-DE')} km`,
-        duration: `${baseDuration}h ${Math.floor((baseDistance % 80) * 0.75)}min`,
-        instructions: [
-          `1. Starten Sie in ${startWaypoint.address}`,
-          ...waypoints
-            .filter(w => w.id !== 'start' && w.id !== 'end' && w.address)
-            .map((w, i) => `${i + 2}. Fahren Sie nach ${w.address}`),
-          `${waypoints.length}. Erreichen Sie Ihr Ziel in ${endWaypoint.address}`
-        ]
+        distance: data.distance,
+        duration: data.duration,
+        instructions: data.instructions,
+        geometry: data.geometry,
+        waypoints: data.waypoints
       });
       
-      console.log('Route berechnet:', { mode, waypoints, avoidTolls, avoidHighways, fastestRoute });
+      console.log('Route berechnet:', data);
     } catch (error) {
       console.error('Fehler bei Routenberechnung:', error);
-      alert('Fehler bei der Routenberechnung. Bitte versuchen Sie es erneut.');
+      alert(`Fehler bei der Routenberechnung: ${error.message}`);
     } finally {
       setIsCalculating(false);
     }

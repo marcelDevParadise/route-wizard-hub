@@ -15,6 +15,8 @@ interface RouteData {
   distance: string;
   duration: string;
   instructions: string[];
+  geometry?: any;
+  waypoints?: Waypoint[];
 }
 
 const Index = () => {

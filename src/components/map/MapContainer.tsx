@@ -22,6 +22,8 @@ interface RouteData {
   distance: string;
   duration: string;
   instructions: string[];
+  geometry?: any;
+  waypoints?: Waypoint[];
 }
 
 interface MapContainerProps {
@@ -137,19 +139,30 @@ export function MapContainer({ className, waypoints = [], routeData, isCalculati
     });
 
     // Add route polyline if route is calculated
-    if (routeData && validWaypoints.length >= 2) {
-      const routeCoords = validWaypoints.map(wp => getCoordinatesForAddress(wp.address));
+    if (routeData && routeData.geometry) {
+      // Decode OpenRouteService geometry if available
+      let routeCoords: [number, number][] = [];
       
-      const polyline = L.polyline(routeCoords, {
-        color: 'hsl(155, 75%, 40%)', // travel color
-        weight: 4,
-        opacity: 0.8
-      }).addTo(map);
+      if (routeData.waypoints && routeData.waypoints.length >= 2) {
+        // Use precise coordinates from routing API
+        routeCoords = routeData.waypoints.map(wp => [wp.lat!, wp.lng!]);
+      } else if (validWaypoints.length >= 2) {
+        // Fallback to mock coordinates
+        routeCoords = validWaypoints.map(wp => getCoordinatesForAddress(wp.address));
+      }
       
-      polylineRef.current = polyline;
-      
-      // Extend bounds to include the route
-      polyline.getBounds().isValid() && bounds.extend(polyline.getBounds());
+      if (routeCoords.length >= 2) {
+        const polyline = L.polyline(routeCoords, {
+          color: 'hsl(155, 75%, 40%)', // travel color
+          weight: 4,
+          opacity: 0.8
+        }).addTo(map);
+        
+        polylineRef.current = polyline;
+        
+        // Extend bounds to include the route
+        polyline.getBounds().isValid() && bounds.extend(polyline.getBounds());
+      }
     }
 
     // Fit map to show all markers/route
