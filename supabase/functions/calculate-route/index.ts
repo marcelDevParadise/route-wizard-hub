@@ -21,6 +21,29 @@ interface RouteRequest {
   fastestRoute?: boolean;
 }
 
+// Simple distance calculation fallback
+function calculateSimpleDistance(waypoints: any[]): number {
+  if (waypoints.length < 2) return 0;
+  
+  let totalDistance = 0;
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const from = waypoints[i];
+    const to = waypoints[i + 1];
+    
+    // Haversine formula for distance calculation
+    const R = 6371; // Earth's radius in km
+    const dLat = (to.lat - from.lat) * Math.PI / 180;
+    const dLng = (to.lng - from.lng) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(from.lat * Math.PI / 180) * Math.cos(to.lat * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    totalDistance += R * c;
+  }
+  
+  return totalDistance;
+}
+
 // Geocoding function using Nominatim (free)
 async function geocodeAddress(address: string): Promise<{lat: number, lng: number} | null> {
   try {
@@ -99,6 +122,7 @@ serve(async (req) => {
     }
 
     // Call OpenRouteService Directions API
+    console.log('Calling OpenRouteService with coordinates:', coordinates);
     const orsResponse = await fetch(
       `https://api.openrouteservice.org/v2/directions/${profile}`,
       {
@@ -117,16 +141,63 @@ serve(async (req) => {
       }
     );
 
+    console.log('OpenRouteService response status:', orsResponse.status);
+
     if (!orsResponse.ok) {
       const errorText = await orsResponse.text();
       console.error('OpenRouteService error:', errorText);
-      throw new Error(`Routing service error: ${orsResponse.status}`);
+      
+      // Fallback to simple calculation
+      console.log('Using fallback calculation');
+      const totalDistance = calculateSimpleDistance(validWaypoints);
+      const estimatedDuration = Math.round(totalDistance / 60); // ~60 km/h average
+      
+      return new Response(JSON.stringify({
+        distance: `${Math.round(totalDistance).toLocaleString('de-DE')} km`,
+        duration: estimatedDuration > 60 
+          ? `${Math.floor(estimatedDuration / 60)}h ${estimatedDuration % 60}min`
+          : `${estimatedDuration}min`,
+        instructions: validWaypoints.map((wp, i) => 
+          i === 0 ? `1. Starten Sie in ${wp.address}` :
+          i === validWaypoints.length - 1 ? `${i + 1}. Erreichen Sie Ihr Ziel in ${wp.address}` :
+          `${i + 1}. Fahren Sie nach ${wp.address}`
+        ),
+        geometry: validWaypoints.map(wp => [wp.lat, wp.lng]), // Simple line between points
+        waypoints: validWaypoints,
+        fallback: true
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const orsData = await orsResponse.json();
+    console.log('OpenRouteService response data structure:', {
+      hasRoutes: !!orsData.routes,
+      routeCount: orsData.routes?.length || 0,
+      firstRoute: orsData.routes?.[0] ? 'exists' : 'missing'
+    });
     
     if (!orsData.routes || orsData.routes.length === 0) {
-      throw new Error('Keine Route gefunden');
+      console.log('No routes found, using fallback');
+      const totalDistance = calculateSimpleDistance(validWaypoints);
+      const estimatedDuration = Math.round(totalDistance / 60);
+      
+      return new Response(JSON.stringify({
+        distance: `${Math.round(totalDistance).toLocaleString('de-DE')} km`,
+        duration: estimatedDuration > 60 
+          ? `${Math.floor(estimatedDuration / 60)}h ${estimatedDuration % 60}min`
+          : `${estimatedDuration}min`,
+        instructions: validWaypoints.map((wp, i) => 
+          i === 0 ? `1. Starten Sie in ${wp.address}` :
+          i === validWaypoints.length - 1 ? `${i + 1}. Erreichen Sie Ihr Ziel in ${wp.address}` :
+          `${i + 1}. Fahren Sie nach ${wp.address}`
+        ),
+        geometry: validWaypoints.map(wp => [wp.lat, wp.lng]),
+        waypoints: validWaypoints,
+        fallback: true
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const route = orsData.routes[0];
@@ -147,9 +218,15 @@ serve(async (req) => {
     );
 
     // Decode geometry for route visualization
-    const geometryCoords = route.geometry.coordinates
-      .filter((coord: number[]) => coord && coord.length >= 2 && !coord.some(isNaN))
-      .map((coord: number[]) => [coord[1], coord[0]]); // [lng, lat] to [lat, lng]
+    let geometryCoords: number[][] = [];
+    if (route.geometry && route.geometry.coordinates) {
+      geometryCoords = route.geometry.coordinates
+        .filter((coord: number[]) => coord && coord.length >= 2 && !coord.some(isNaN))
+        .map((coord: number[]) => [coord[1], coord[0]]); // [lng, lat] to [lat, lng]
+    } else {
+      // Fallback to waypoint coordinates
+      geometryCoords = validWaypoints.map(wp => [wp.lat, wp.lng]);
+    }
 
     const result = {
       distance: `${distanceKm.toLocaleString('de-DE')} km`,
