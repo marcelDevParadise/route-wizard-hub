@@ -140,16 +140,8 @@ export function MapContainer({ className, waypoints = [], routeData, isCalculati
 
     // Add route polyline if route is calculated
     if (routeData && routeData.geometry) {
-      // Decode OpenRouteService geometry if available
-      let routeCoords: [number, number][] = [];
-      
-      if (routeData.waypoints && routeData.waypoints.length >= 2) {
-        // Use precise coordinates from routing API
-        routeCoords = routeData.waypoints.map(wp => [wp.lat!, wp.lng!]);
-      } else if (validWaypoints.length >= 2) {
-        // Fallback to mock coordinates
-        routeCoords = validWaypoints.map(wp => getCoordinatesForAddress(wp.address));
-      }
+      // Use the actual route geometry from OpenRouteService
+      const routeCoords: [number, number][] = routeData.geometry;
       
       if (routeCoords.length >= 2) {
         const polyline = L.polyline(routeCoords, {

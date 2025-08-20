@@ -147,7 +147,7 @@ serve(async (req) => {
     );
 
     // Decode geometry for route visualization
-    const geometry = route.geometry;
+    const geometryCoords = route.geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]]); // [lng, lat] to [lat, lng]
 
     const result = {
       distance: `${distanceKm.toLocaleString('de-DE')} km`,
@@ -155,7 +155,7 @@ serve(async (req) => {
         ? `${durationHours}h ${durationMinutes}min`
         : `${durationMinutes}min`,
       instructions,
-      geometry,
+      geometry: geometryCoords, // Send decoded coordinates
       waypoints: validWaypoints,
     };
 
