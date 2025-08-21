@@ -97,58 +97,39 @@ export function RouteSidebar({
   };
 
   const calculateRoute = async () => {
-    const startWaypoint = waypoints.find((w) => w.id === "start");
-    const endWaypoint = waypoints.find((w) => w.id === "end");
-
+    const startWaypoint = waypoints.find(w => w.id === "start");
+    const endWaypoint = waypoints.find(w => w.id === "end");
     if (!startWaypoint?.address || !endWaypoint?.address) {
       alert("Bitte geben Sie Start- und Zieladresse ein.");
       return;
     }
-
+  
     setIsCalculating(true);
-    setFallbackNotice(null);
-
+  
     try {
-      const { data, error } = await supabase.functions.invoke<ServerRouteResponse>("calculate-route", {
-        body: {
-          waypoints,
-          mode,
-          avoidTolls,
-          avoidHighways,
-          fastestRoute,
-        },
+      const { data, error } = await supabase.functions.invoke("calculate-route", {
+        body: { waypoints, mode, avoidTolls, avoidHighways, fastestRoute },
       });
-
-      if (error) throw new Error(error.message);
+    
+      // Falls die Edge Function wirklich 500 gesendet hat:
+      if (error) throw new Error(error.message || "Unbekannter Serverfehler");
+    
       if (!data) throw new Error("Leere Antwort vom Server");
-      if ((data as any).error) throw new Error((data as any).error);
-
-      // Fallback-Hinweis anzeigen, falls ORS keine echte Route liefern konnte
-      if ("fallback" in data && data.fallback) {
-        setFallbackNotice(
-          data.errorMessage
-            ? `Hinweis: ${data.errorMessage} — es wird nur die Luftlinie angezeigt.`
-            : "Hinweis: ORS konnte keine Route liefern — es wird nur die Luftlinie angezeigt."
-        );
-        console.warn("Debug ORS:", data.debug);
+    
+      // Wenn Server bewusst 200 + fallback/errorMessage liefert:
+      if (data.fallback && data.errorMessage) {
+        // Optional Toast:
+        console.warn(data.errorMessage);
+        alert(`Hinweis: ${data.errorMessage}`);
       }
-
+    
       setRouteData({
-        distance: data.distance,
-        duration: data.duration,
+        distance: data.distance ?? "0 km",
+        duration: data.duration ?? "0min",
         instructions: data.instructions ?? [],
         geometry: data.geometry,
-        waypoints: data.waypoints,
-        // optional persistieren:
-        // @ts-ignore falls dein Typ es (noch) nicht kennt
-        distanceMeters: (data as any).distanceMeters,
-        // @ts-ignore
-        distanceKm: (data as any).distanceKm,
-        // @ts-ignore
-        durationSeconds: (data as any).durationSeconds,
+        waypoints: data.waypoints ?? waypoints,
       });
-
-      console.log("Route berechnet:", data);
     } catch (err: any) {
       console.error("Fehler bei Routenberechnung:", err);
       alert(`Fehler bei der Routenberechnung: ${err?.message ?? err}`);
