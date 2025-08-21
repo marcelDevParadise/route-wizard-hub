@@ -177,6 +177,7 @@ serve(async (req) => {
     }
 
     const data = await orsRes.json();
+    console.log("ORS raw response:", JSON.stringify(data, null, 2));
 
     // ---- GeoJSON-Parsing (FeatureCollection) ----
     const feature = data?.features?.[0];
@@ -213,19 +214,19 @@ serve(async (req) => {
     // Properties/Summary/Steps aus dem Feature
     const props = feature.properties ?? {};
     const summary = props.summary ?? {};
-      
+
     const distanceMeters = Number(summary.distance) || 0;   // ORS liefert Meter
     const durationSeconds = Number(summary.duration) || 0;
-      
+
     const distanceKm = distanceMeters / 1000;
     const durH = Math.floor(durationSeconds / 3600);
     const durM = Math.round((durationSeconds % 3600) / 60);
-      
+
     // Schöne Formatierung (1 Nachkommastelle ab 10 km weglassen)
     const formatKm = (km: number) => (km >= 10 ? Math.round(km).toString() : km.toFixed(1)).replace('.', ',');
     const distanceStr = `${formatKm(distanceKm)} km`;
     const durationStr = durH > 0 ? `${durH}h ${durM}min` : `${durM}min`;
-      
+
     const instructions: string[] = Array.isArray(props.segments)
       ? props.segments.flatMap((segment: any) =>
           Array.isArray(segment?.steps)
