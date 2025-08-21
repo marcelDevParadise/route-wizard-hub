@@ -80,8 +80,12 @@ serve(async (req) => {
 
     if (!Array.isArray(waypoints) || waypoints.length < 2) {
       return new Response(
-        JSON.stringify({ error: "Mindestens 2 gültige Adressen erforderlich" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ 
+          fallback: true,
+          errorMessage: "Mindestens 2 gültige Adressen erforderlich",
+          geometry: [], waypoints: waypoints ?? [], distance: "0 km", duration: "0min", instructions: []
+        }),
+        { headers: {...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -108,8 +112,12 @@ serve(async (req) => {
     // Mindestens 2 unterschiedliche Punkte
     if (valid.length < 2 || (valid.length === 2 && valid[0].lat === valid[1].lat && valid[0].lng === valid[1].lng)) {
       return new Response(
-        JSON.stringify({ error: "Start und Ziel dürfen nicht identisch sein / zu wenig unterschiedliche Punkte." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ 
+          fallback: true,  
+          errorMessage: "Start und Ziel dürfen nicht identisch sein / zu wenig unterschiedliche Punkte haben",
+          geometry: [], waypoints: valid, distance: "0 km", duration: "0min", instructions: []
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
