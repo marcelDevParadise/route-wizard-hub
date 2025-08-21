@@ -39,8 +39,10 @@ interface RouteSidebarProps {
 type ServerRouteOk = {
   distance: string;
   duration: string;
-  instructions: string[];
-  geometry: { type: "LineString"; coordinates: [number, number][] }; // ORS GeoJSON (LngLat)
+  distanceMeters?: number;
+  distanceKm?: number;
+  durationSeconds?: number;
+  geometry: { type: "LineString"; coordinates: [number, number][] };
   waypoints: Waypoint[];
   fallback?: false;
 };
@@ -48,10 +50,14 @@ type ServerRouteOk = {
 type ServerRouteFallback = {
   distance: string;
   duration: string;
-  instructions: string[];
-  geometry: [number, number][]; // einfache Luftlinie [lat,lng]
+  distanceMeters?: number;
+  distanceKm?: number;
+  durationSeconds?: number;
+  geometry: [number, number][];
   waypoints: Waypoint[];
   fallback: true;
+  errorMessage?: string;
+  debug?: any;
 };
 
 type ServerRouteResponse = ServerRouteOk | ServerRouteFallback;
@@ -131,8 +137,15 @@ export function RouteSidebar({
         distance: data.distance,
         duration: data.duration,
         instructions: data.instructions ?? [],
-        geometry: data.geometry,   // MapContainer erkennt GeoJSON oder Fallback-Array
+        geometry: data.geometry,
         waypoints: data.waypoints,
+        // optional persistieren:
+        // @ts-ignore falls dein Typ es (noch) nicht kennt
+        distanceMeters: (data as any).distanceMeters,
+        // @ts-ignore
+        distanceKm: (data as any).distanceKm,
+        // @ts-ignore
+        durationSeconds: (data as any).durationSeconds,
       });
 
       console.log("Route berechnet:", data);
