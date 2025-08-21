@@ -44,7 +44,6 @@ function calculateSimpleDistance(waypoints: Array<{ lat: number; lng: number }>)
 
 async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
   try {
-    // Nominatim mit Ländereinschränkung + UA
     const response = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=de`,
       { headers: { "User-Agent": "route-wizard-hub/1.0 (contact: your-email@example.com)" } }
@@ -124,20 +123,19 @@ serve(async (req) => {
       if (avoid.length) options.avoid_features = avoid;
     }
 
-    // ORS Request: GeoJSON als Geometrie erzwingen
+    // ORS Request: GeoJSON-Endpoint verwenden
     const coordinates: [number, number][] = valid.map((w) => [w.lng, w.lat]); // [lon,lat]
-    const orsRes = await fetch(`https://api.openrouteservice.org/v2/directions/${profile}`, {
+    const orsRes = await fetch(`https://api.openrouteservice.org/v2/directions/${profile}/geojson`, {
       method: "POST",
       headers: {
         Authorization: orsApiKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        coordinates,                 // [[lon,lat], ...]
+        coordinates,                               // [[lon,lat], ...]
         preference: fastestRoute ? "fastest" : "shortest",
         options: Object.keys(options).length ? options : undefined,
         instructions: true,
-        geometry: "geojson",
         units: "km",
       }),
     });
@@ -156,7 +154,7 @@ serve(async (req) => {
 
       // -> Fallback Luftlinie (klar markiert + Fehlertext)
       const km = calculateSimpleDistance(valid);
-      const mins = Math.round(km); // 60 km/h ≈ 1 km/min → grobe Schätzung in Minuten ~ km
+      const mins = Math.round(km); // grobe Schätzung (≈ 1 km/min)
       return new Response(
         JSON.stringify({
           distance: `${Math.round(km).toLocaleString("de-DE")} km`,
@@ -171,8 +169,8 @@ serve(async (req) => {
           geometry: valid.map((w) => [w.lat, w.lng]), // Leaflet [lat,lng]
           waypoints: valid,
           fallback: true,
-          errorMessage: `ORS error: ${errMsg}`,
-          debug: {profile, sentCoordinates: coordinates},
+          errorMessage: `ORS HTTP ${orsRes.status}: ${errMsg}`,
+          debug: { endpoint: `/v2/directions/${profile}/geojson`, profile, sentCoordinates: coordinates },
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -180,8 +178,9 @@ serve(async (req) => {
 
     const data = await orsRes.json();
 
-    // Harte Validierung der ORS-Antwort
-    if (!data?.routes?.length || !data.routes[0]?.geometry) {
+    // ---- GeoJSON-Parsing (FeatureCollection) ----
+    const feature = data?.features?.[0];
+    if (!feature?.geometry || feature.geometry.type !== "LineString") {
       console.warn("ORS returned no usable route, falling back.");
       const km = calculateSimpleDistance(valid);
       const mins = Math.round(km);
@@ -200,39 +199,44 @@ serve(async (req) => {
           waypoints: valid,
           fallback: true,
           errorMessage: "ORS lieferte keine Route zwischen den Punkten.",
-          debug: { profile, sentCoordinates: coordinates, orsShape: Object.keys(data || {}) },
+          debug: {
+            endpoint: `/v2/directions/${profile}/geojson`,
+            profile,
+            sentCoordinates: coordinates,
+            featureCount: Array.isArray(data?.features) ? data.features.length : 0,
+          },
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const route = data.routes[0];
-    // Dank geometry_format=geojson: { type: 'LineString', coordinates: [[lon,lat], ...] }
-
-    const distanceKm = Math.round((route?.summary?.distance ?? 0) / 1000);
-    const durSec = route?.summary?.duration ?? 0;
+    // Properties/Summary/Steps aus dem Feature
+    const props = feature.properties ?? {};
+    const summary = props.summary ?? {};
+    const distanceKm = Math.round((summary.distance ?? 0) / 1000);
+    const durSec = summary.duration ?? 0;
     const durH = Math.floor(durSec / 3600);
     const durM = Math.round((durSec % 3600) / 60);
 
-    // Turn-by-Turn
-    const instructions: string[] = Array.isArray(route?.segments)
-      ? route.segments.flatMap((segment: any) =>
+    const instructions: string[] = Array.isArray(props.segments)
+      ? props.segments.flatMap((segment: any) =>
           Array.isArray(segment?.steps)
             ? segment.steps.map((step: any, i: number) => `${i + 1}. ${step.instruction}`)
             : []
         )
       : [];
 
+    // GeoJSON LineString direkt zurückgeben (Koordinaten sind [lon,lat])
     const lineString =
-      route.geometry?.type === "LineString" && Array.isArray(route.geometry?.coordinates)
-        ? route.geometry
+      feature.geometry?.type === "LineString" && Array.isArray(feature.geometry?.coordinates)
+        ? feature.geometry
         : { type: "LineString", coordinates: [] };
 
     const result = {
       distance: `${distanceKm.toLocaleString("de-DE")} km`,
       duration: durH > 0 ? `${durH}h ${durM}min` : `${durM}min`,
       instructions,
-      geometry: lineString, // GeoJSON (LngLat) – Frontend dreht für Leaflet nach [lat,lng]
+      geometry: lineString, // Frontend dreht [lon,lat] → [lat,lng] fürs Zeichnen
       waypoints: valid,
       fallback: false,
     };
