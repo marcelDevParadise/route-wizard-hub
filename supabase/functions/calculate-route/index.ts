@@ -223,6 +223,7 @@ serve(async (req) => {
             endpoint: `/v2/directions/${profile}/geojson`,
             profile,
             sentCoordinates: coordinates,
+            reason: "http_error"
           },
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -323,6 +324,8 @@ serve(async (req) => {
     const distanceStr = `${distanceKm.toFixed(1).replace(".", ",")} km`;
     const durationStr = durH > 0 ? `${durH}h ${durM}min` : `${durM}min`;
 
+    const distanceSource = Number(props?.summary?.distance) > 0 ? "summary" : "geometry";
+
     // Turn-by-Turn
     const instructions: string[] = Array.isArray((props as any).segments)
       ? (props as any).segments.flatMap((segment: any) =>
@@ -347,6 +350,7 @@ serve(async (req) => {
       distanceMeters,
       distanceKm,
       durationSeconds,
+      distanceSource,
       instructions,
       geometry: lineString,
       waypoints: valid,

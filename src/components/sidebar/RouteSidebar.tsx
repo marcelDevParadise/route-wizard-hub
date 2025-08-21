@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/components/ui/use-toast";
 
 interface Waypoint {
   id: string;
@@ -96,6 +97,8 @@ export function RouteSidebar({
     setWaypoints(waypoints.map((w) => (w.id === id ? { ...w, address } : w)));
   };
 
+  const { toast } = useToast();
+
   const calculateRoute = async () => {
     const startWaypoint = waypoints.find(w => w.id === "start");
     const endWaypoint = waypoints.find(w => w.id === "end");
@@ -103,36 +106,67 @@ export function RouteSidebar({
       alert("Bitte geben Sie Start- und Zieladresse ein.");
       return;
     }
-  
+
     setIsCalculating(true);
-  
+
     try {
       const { data, error } = await supabase.functions.invoke("calculate-route", {
         body: { waypoints, mode, avoidTolls, avoidHighways, fastestRoute },
       });
-    
+
       // Falls die Edge Function wirklich 500 gesendet hat:
       if (error) throw new Error(error.message || "Unbekannter Serverfehler");
-    
+
       if (!data) throw new Error("Leere Antwort vom Server");
-    
+
       // Wenn Server bewusst 200 + fallback/errorMessage liefert:
       if (data.fallback && data.errorMessage) {
-        // Optional Toast:
-        console.warn(data.errorMessage);
-        alert(`Hinweis: ${data.errorMessage}`);
+        const msg = data.errorMessage ?? "OSR konnte keine Route liefern - es wird nur die Luftlinie angezeigt.";
+        setFallbackNotice(msg);
+        toast({
+          variant: "destructive",
+          title: "Routenberechnung unvollständig",
+          description: msg,
+        });
+        // Optional: Debug im Dev‑Mode zeigen
+        if (import.meta.env.DEV && data.debug) {
+          console.warn("[ORS DEBUG]", data.debug);
+          toast({
+            title: "Debug (DEV)",
+            description: JSON.stringify(data.debug),
+          });
+        }
+      } else {
+        // Erfolg-Toast mit Quelle der Distanz
+        const src = data.distanceSource === "geometry" ? "Geometrie" : "Zusammenfassung";
+        toast({
+          title: "Route berechnet",
+          description: `Entfernung: ${data.distance} • Fahrzeit: ${data.duration} • Quelle: ${src}`,
+        });
       }
-    
+
+      // RouteData setzen (formatiert + numerische Felder übernehmen, falls vorhanden)
       setRouteData({
-        distance: data.distance ?? "0 km",
+        distance: data.distance ?? "0,0 km",
         duration: data.duration ?? "0min",
         instructions: data.instructions ?? [],
         geometry: data.geometry,
         waypoints: data.waypoints ?? waypoints,
+        // optional: Zahlen mit durchreichen (für spätere Features)
+        // @ts-ignore
+        distanceMeters: data.distanceMeters,
+        // @ts-ignore
+        distanceKm: data.distanceKm,
+        // @ts-ignore
+        durationSeconds: data.durationSeconds,
       });
     } catch (err: any) {
       console.error("Fehler bei Routenberechnung:", err);
-      alert(`Fehler bei der Routenberechnung: ${err?.message ?? err}`);
+      toast({
+        variant: "destructive",
+        title: "Fehler bei der Routenberechnung",
+        description: err?.message ?? String(err),
+      });
     } finally {
       setIsCalculating(false);
     }
