@@ -213,11 +213,19 @@ serve(async (req) => {
     // Properties/Summary/Steps aus dem Feature
     const props = feature.properties ?? {};
     const summary = props.summary ?? {};
-    const distanceKm = Math.round((summary.distance ?? 0) / 1000);
-    const durSec = summary.duration ?? 0;
-    const durH = Math.floor(durSec / 3600);
-    const durM = Math.round((durSec % 3600) / 60);
-
+      
+    const distanceMeters = Number(summary.distance) || 0;   // ORS liefert Meter
+    const durationSeconds = Number(summary.duration) || 0;
+      
+    const distanceKm = distanceMeters / 1000;
+    const durH = Math.floor(durationSeconds / 3600);
+    const durM = Math.round((durationSeconds % 3600) / 60);
+      
+    // Schöne Formatierung (1 Nachkommastelle ab 10 km weglassen)
+    const formatKm = (km: number) => (km >= 10 ? Math.round(km).toString() : km.toFixed(1)).replace('.', ',');
+    const distanceStr = `${formatKm(distanceKm)} km`;
+    const durationStr = durH > 0 ? `${durH}h ${durM}min` : `${durM}min`;
+      
     const instructions: string[] = Array.isArray(props.segments)
       ? props.segments.flatMap((segment: any) =>
           Array.isArray(segment?.steps)
@@ -226,17 +234,22 @@ serve(async (req) => {
         )
       : [];
 
-    // GeoJSON LineString direkt zurückgeben (Koordinaten sind [lon,lat])
+    // GeoJSON LineString direkt zurückgeben
     const lineString =
       feature.geometry?.type === "LineString" && Array.isArray(feature.geometry?.coordinates)
         ? feature.geometry
         : { type: "LineString", coordinates: [] };
 
     const result = {
-      distance: `${distanceKm.toLocaleString("de-DE")} km`,
-      duration: durH > 0 ? `${durH}h ${durM}min` : `${durM}min`,
+      // formatiert für UI:
+      distance: distanceStr,
+      duration: durationStr,
+      // zusätzlich numerisch für Logik/Statistiken:
+      distanceMeters,
+      distanceKm,
+      durationSeconds,
       instructions,
-      geometry: lineString, // Frontend dreht [lon,lat] → [lat,lng] fürs Zeichnen
+      geometry: lineString, // [lon,lat]
       waypoints: valid,
       fallback: false,
     };
