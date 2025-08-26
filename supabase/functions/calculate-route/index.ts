@@ -73,7 +73,7 @@ async function geocodeAddress(
   }
 }
 
-// Hilfsfunktion: entfernt direkt aufeinanderfolgende Duplikate
+// entfernt direkt aufeinanderfolgende Duplikate
 function dedupeConsecutive(points: Array<{ lat: number; lng: number }>) {
   const out: Array<{ lat: number; lng: number }> = [];
   for (const p of points) {
@@ -81,6 +81,35 @@ function dedupeConsecutive(points: Array<{ lat: number; lng: number }>) {
     if (!last || last.lat !== p.lat || last.lng !== p.lng) out.push(p);
   }
   return out;
+}
+
+function almostEqual(a: number, b: number, tol = 1e-4) {
+  return Math.abs(a - b) < tol;
+}
+
+// Haversine + Liniendistanz aus GeoJSON-LineString ([lon,lat])
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) *
+      Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function distanceFromLineStringKm(coords: [number, number][]) {
+  let sum = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const [lon1, lat1] = coords[i];
+    const [lon2, lat2] = coords[i + 1];
+    if ([lon1, lat1, lon2, lat2].every(Number.isFinite)) {
+      sum += haversineKm(lat1, lon1, lat2, lon2);
+    }
+  }
+  return sum;
 }
 
 // --- Main Handler ---
@@ -134,19 +163,19 @@ serve(async (req) => {
     // Duplikate direkt hintereinander entfernen
     valid = dedupeConsecutive(valid);
 
-    // Mindestens 2 unterschiedliche Punkte
+    // Mindestens 2 unterschiedliche Punkte (mit Toleranz)
     if (
       valid.length < 2 ||
       (valid.length === 2 &&
-        valid[0].lat === valid[1].lat &&
-        valid[0].lng === valid[1].lng)
+        almostEqual(valid[0].lat, valid[1].lat) &&
+        almostEqual(valid[0].lng, valid[1].lng))
     ) {
       return new Response(
         JSON.stringify({
           fallback: true,
           errorMessage:
             "Start und Ziel dürfen nicht identisch sein / zu wenig unterschiedliche Punkte haben",
-          geometry: [],
+          geometry: valid.map((w) => [w.lat, w.lng]),
           waypoints: valid,
           distance: "0 km",
           duration: "0min",
@@ -223,7 +252,7 @@ serve(async (req) => {
             endpoint: `/v2/directions/${profile}/geojson`,
             profile,
             sentCoordinates: coordinates,
-            reason: "http_error"
+            reason: "http_error",
           },
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -267,6 +296,7 @@ serve(async (req) => {
             featureCount: Array.isArray(data?.features)
               ? data.features.length
               : 0,
+            reason: "no_feature",
           },
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -277,47 +307,15 @@ serve(async (req) => {
     const props = feature.properties ?? {};
     const summary = props.summary ?? {};
 
-    // Distanz immer aus Geometrie summieren (statt summary.distance)
-    let distanceMeters = Math.round(distanceFromLineStringKm(feature.geometry.coordinates as [number, number][]) * 1000);
-      
+    // Distanz IMMER aus Geometrie summieren (statt summary.distance)
+    let distanceMeters = Math.round(
+      distanceFromLineStringKm(
+        feature.geometry.coordinates as [number, number][],
+      ) * 1000,
+    );
+
     // Dauer: wenn summary.duration vorhanden, nimm sie; sonst grob schätzen
     let durationSeconds = Number(summary.duration);
-    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-      const km = distanceMeters / 1000;
-      const speedKmh = profile === "foot-walking" ? 4.5 : 60;
-      durationSeconds = Math.round((km / speedKmh) * 3600);
-    }
-
-    // 2) Fallback: Distanz aus Geometrie
-    function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
-      const R = 6371; // km
-      const dLat = (lat2 - lat1) * Math.PI / 180;
-      const dLon = (lon2 - lon1) * Math.PI / 180;
-      const a = Math.sin(dLat / 2) ** 2 +
-        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-          Math.sin(dLon / 2) ** 2;
-      return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    function distanceFromLineStringKm(coords: [number, number][]) {
-      let sum = 0;
-      for (let i = 0; i < coords.length - 1; i++) {
-        const [lon1, lat1] = coords[i];
-        const [lon2, lat2] = coords[i + 1];
-        if ([lon1, lat1, lon2, lat2].every(Number.isFinite)) {
-          sum += haversineKm(lat1, lon1, lat2, lon2);
-        }
-      }
-      return sum;
-    }
-
-    if (!Number.isFinite(distanceMeters) || distanceMeters <= 0) {
-      const geomKm = distanceFromLineStringKm(
-        feature.geometry.coordinates as [number, number][],
-      );
-      distanceMeters = Math.round(geomKm * 1000);
-    }
-
     if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
       const km = distanceMeters / 1000;
       const speedKmh = profile === "foot-walking" ? 4.5 : 60;
@@ -332,23 +330,23 @@ serve(async (req) => {
     const distanceStr = `${distanceKm.toFixed(1).replace(".", ",")} km`;
     const durationStr = durH > 0 ? `${durH}h ${durM}min` : `${durM}min`;
 
-    const distanceSource = Number(props?.summary?.distance) > 0 ? "summary" : "geometry";
+    const distanceSource: "geometry" = "geometry"; // explizit markieren
 
     // Turn-by-Turn
     const instructions: string[] = Array.isArray((props as any).segments)
       ? (props as any).segments.flatMap((segment: any) =>
-        Array.isArray(segment?.steps)
-          ? segment.steps.map((step: any, i: number) =>
-            `${i + 1}. ${step.instruction}`
-          )
-          : []
-      )
+          Array.isArray(segment?.steps)
+            ? segment.steps.map(
+                (step: any, i: number) => `${i + 1}. ${step.instruction}`,
+              )
+            : [],
+        )
       : [];
 
     // GeoJSON LineString zurückgeben
     const lineString =
       feature.geometry?.type === "LineString" &&
-        Array.isArray(feature.geometry?.coordinates)
+      Array.isArray(feature.geometry?.coordinates)
         ? feature.geometry
         : { type: "LineString", coordinates: [] };
 
