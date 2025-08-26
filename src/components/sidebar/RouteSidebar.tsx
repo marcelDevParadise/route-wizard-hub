@@ -170,6 +170,15 @@ export function RouteSidebar({
         body: { waypoints, mode, avoidTolls, avoidHighways, fastestRoute },
       });
 
+      // Debug-Toast mit den wichtigsten Feldern
+      toast("Debug Route", 
+        {
+          description: `distance: ${data.distance ?? "?"}
+          distanceKm: ${(data as any).distanceKm ?? "?"}
+          geom-type: ${(data as any).geometry?.type || (Array.isArray((data as any).geometry) ? "array" : "?")}`,
+        }
+      );
+
       if (error) throw new Error(error.message || "Unbekannter Serverfehler");
       if (!data) throw new Error("Leere Antwort vom Server");
 
