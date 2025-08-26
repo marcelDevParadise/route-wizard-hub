@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { useToast } from "@/components/ui/use-toast";
+// 👉 Sonner-Toast (weil in App.tsx <Sonner /> montiert ist)
+import { toast } from "sonner";
 
 interface Waypoint {
   id: string;
@@ -25,7 +26,7 @@ interface RouteData {
   instructions: string[];
   geometry?: any; // GeoJSON LineString (LngLat) ODER [lat,lng][] im Fallback
   waypoints?: Waypoint[];
-  // optionale numerische Felder
+  // numerische Felder (optional)
   distanceMeters?: number;
   distanceKm?: number;
   durationSeconds?: number;
@@ -80,7 +81,7 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function computeDistanceKmFromGeometry(geometry: any): number | null {
+function kmFromGeometry(geometry: any): number | null {
   try {
     // A) GeoJSON LineString [lon,lat][]
     if (geometry?.type === "LineString" && Array.isArray(geometry.coordinates)) {
@@ -132,7 +133,6 @@ export function RouteSidebar({
   const [avoidHighways, setAvoidHighways] = useState(false);
   const [fastestRoute, setFastestRoute] = useState(true);
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
-  const { toast } = useToast();
 
   const addWaypoint = () => {
     const waypointNumber = waypoints.length - 1;
@@ -158,11 +158,7 @@ export function RouteSidebar({
     const startWaypoint = waypoints.find((w) => w.id === "start");
     const endWaypoint = waypoints.find((w) => w.id === "end");
     if (!startWaypoint?.address || !endWaypoint?.address) {
-      toast({
-        variant: "destructive",
-        title: "Eingaben unvollständig",
-        description: "Bitte geben Sie Start- und Zieladresse ein.",
-      });
+      toast.error("Bitte geben Sie Start- und Zieladresse ein.");
       return;
     }
 
@@ -182,39 +178,36 @@ export function RouteSidebar({
           data.errorMessage ??
           "ORS konnte keine Route liefern – es wird nur die Luftlinie angezeigt.";
         setFallbackNotice(msg);
-        toast({
-          variant: "destructive",
-          title: "Routenberechnung unvollständig",
-          description: msg,
-        });
-        if (import.meta.env.DEV && data.debug) {
-          // Debug-Hinweis im Dev-Modus
-          console.warn("[ORS DEBUG]", data.debug);
+        toast.message("Routenberechnung unvollständig", { description: msg });
+        if (import.meta.env.DEV && (data as any).debug) {
+          console.warn("[ORS DEBUG]", (data as any).debug);
         }
       } else {
         const src = (data as any).distanceSource === "geometry" ? "Geometrie" : "Zusammenfassung";
-        toast({
-          title: "Route berechnet",
+        toast.success("Route berechnet", {
           description: `Entfernung: ${data.distance} • Fahrzeit: ${data.duration} • Quelle: ${src}`,
         });
       }
 
       // --- Distanz-Absicherung im Frontend ---
       let distanceStr = data.distance ?? "0,0 km";
-      const distanceLooksZero =
-        !distanceStr || distanceStr === "0,0 km" || distanceStr === "0 km" || distanceStr.startsWith("0");
+      const looksZero =
+        !distanceStr ||
+        distanceStr === "0,0 km" ||
+        distanceStr === "0 km" ||
+        distanceStr.startsWith("0");
 
-      let ensuredDistanceKm: number | undefined =
+      // Numerisch bevorzugen, sonst aus Geometrie
+      let ensuredKm: number | undefined =
         typeof (data as any).distanceKm === "number"
           ? (data as any).distanceKm
-          : computeDistanceKmFromGeometry((data as any).geometry) ?? undefined;
+          : kmFromGeometry((data as any).geometry) ?? undefined;
 
-      if (distanceLooksZero && ensuredDistanceKm && ensuredDistanceKm > 0) {
-        const fixed = formatKm(ensuredDistanceKm);
+      if (looksZero && ensuredKm && ensuredKm > 0) {
+        const fixed = formatKm(ensuredKm);
         if (fixed !== "0,0 km") {
           distanceStr = fixed;
-          toast({
-            title: "Entfernung korrigiert",
+          toast.info("Entfernung korrigiert", {
             description: `Aus Geometrie berechnet: ${fixed}`,
           });
         }
@@ -227,16 +220,14 @@ export function RouteSidebar({
         geometry: data.geometry,
         waypoints: data.waypoints ?? waypoints,
         distanceMeters: (data as any).distanceMeters,
-        distanceKm: ensuredDistanceKm ?? (data as any).distanceKm,
+        distanceKm: ensuredKm ?? (data as any).distanceKm,
         durationSeconds: (data as any).durationSeconds,
       });
 
       console.log("Route berechnet:", data);
     } catch (err: any) {
       console.error("Fehler bei Routenberechnung:", err);
-      toast({
-        variant: "destructive",
-        title: "Fehler bei der Routenberechnung",
+      toast.error("Fehler bei der Routenberechnung", {
         description: err?.message ?? String(err),
       });
     } finally {
@@ -244,7 +235,6 @@ export function RouteSidebar({
     }
   };
 
-  // ------ RENDER ------
   return (
     <div className="w-80 bg-nav-surface border-r border-nav-border h-full overflow-y-auto p-4 space-y-6">
       {/* Mode Selection */}
