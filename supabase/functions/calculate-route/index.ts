@@ -277,8 +277,16 @@ serve(async (req) => {
     const props = feature.properties ?? {};
     const summary = props.summary ?? {};
 
-    let distanceMeters = Number(summary.distance);
+    // Distanz immer aus Geometrie summieren (statt summary.distance)
+    let distanceMeters = Math.round(distanceFromLineStringKm(feature.geometry.coordinates as [number, number][]) * 1000);
+      
+    // Dauer: wenn summary.duration vorhanden, nimm sie; sonst grob schätzen
     let durationSeconds = Number(summary.duration);
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+      const km = distanceMeters / 1000;
+      const speedKmh = profile === "foot-walking" ? 4.5 : 60;
+      durationSeconds = Math.round((km / speedKmh) * 3600);
+    }
 
     // 2) Fallback: Distanz aus Geometrie
     function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
