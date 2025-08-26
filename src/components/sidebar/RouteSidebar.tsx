@@ -23,8 +23,12 @@ interface RouteData {
   distance: string;
   duration: string;
   instructions: string[];
-  geometry?: any;           // GeoJSON LineString (LngLat) ODER [lat,lng][] im Fallback
+  geometry?: any; // GeoJSON LineString (LngLat) ODER [lat,lng][] im Fallback
   waypoints?: Waypoint[];
+  // optionale numerische Felder
+  distanceMeters?: number;
+  distanceKm?: number;
+  durationSeconds?: number;
 }
 
 interface RouteSidebarProps {
@@ -43,6 +47,7 @@ type ServerRouteOk = {
   distanceMeters?: number;
   distanceKm?: number;
   durationSeconds?: number;
+  distanceSource?: "summary" | "geometry";
   geometry: { type: "LineString"; coordinates: [number, number][] };
   waypoints: Waypoint[];
   fallback?: false;
@@ -63,6 +68,57 @@ type ServerRouteFallback = {
 
 type ServerRouteResponse = ServerRouteOk | ServerRouteFallback;
 
+// ---- Helpers: Distanz client-seitig aus Geometrie berechnen ----
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function computeDistanceKmFromGeometry(geometry: any): number | null {
+  try {
+    // A) GeoJSON LineString [lon,lat][]
+    if (geometry?.type === "LineString" && Array.isArray(geometry.coordinates)) {
+      const coords = geometry.coordinates as [number, number][];
+      let sum = 0;
+      for (let i = 0; i < coords.length - 1; i++) {
+        const [lon1, lat1] = coords[i];
+        const [lon2, lat2] = coords[i + 1];
+        if ([lon1, lat1, lon2, lat2].every(Number.isFinite)) {
+          sum += haversineKm(lat1, lon1, lat2, lon2);
+        }
+      }
+      return sum;
+    }
+    // B) Fallback: [lat,lng][]
+    if (Array.isArray(geometry)) {
+      const coords = geometry as [number, number][];
+      let sum = 0;
+      for (let i = 0; i < coords.length - 1; i++) {
+        const [lat1, lon1] = coords[i];
+        const [lat2, lon2] = coords[i + 1];
+        if ([lon1, lat1, lon2, lat2].every(Number.isFinite)) {
+          sum += haversineKm(lat1, lon1, lat2, lon2);
+        }
+      }
+      return sum;
+    }
+  } catch {/* noop */}
+  return null;
+}
+
+function formatKm(km: number | null | undefined): string {
+  if (!Number.isFinite(km as number) || (km as number) <= 0) return "0,0 km";
+  const v = km as number;
+  const display = v >= 10 ? Math.round(v) : Number(v.toFixed(1));
+  return `${String(display).replace(".", ",")} km`;
+}
+
 export function RouteSidebar({
   waypoints,
   setWaypoints,
@@ -76,6 +132,7 @@ export function RouteSidebar({
   const [avoidHighways, setAvoidHighways] = useState(false);
   const [fastestRoute, setFastestRoute] = useState(true);
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const addWaypoint = () => {
     const waypointNumber = waypoints.length - 1;
@@ -97,69 +154,84 @@ export function RouteSidebar({
     setWaypoints(waypoints.map((w) => (w.id === id ? { ...w, address } : w)));
   };
 
-  const { toast } = useToast();
-
   const calculateRoute = async () => {
-    const startWaypoint = waypoints.find(w => w.id === "start");
-    const endWaypoint = waypoints.find(w => w.id === "end");
+    const startWaypoint = waypoints.find((w) => w.id === "start");
+    const endWaypoint = waypoints.find((w) => w.id === "end");
     if (!startWaypoint?.address || !endWaypoint?.address) {
-      alert("Bitte geben Sie Start- und Zieladresse ein.");
+      toast({
+        variant: "destructive",
+        title: "Eingaben unvollständig",
+        description: "Bitte geben Sie Start- und Zieladresse ein.",
+      });
       return;
     }
 
     setIsCalculating(true);
+    setFallbackNotice(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke("calculate-route", {
+      const { data, error } = await supabase.functions.invoke<ServerRouteResponse>("calculate-route", {
         body: { waypoints, mode, avoidTolls, avoidHighways, fastestRoute },
       });
 
-      // Falls die Edge Function wirklich 500 gesendet hat:
       if (error) throw new Error(error.message || "Unbekannter Serverfehler");
-
       if (!data) throw new Error("Leere Antwort vom Server");
 
-      // Wenn Server bewusst 200 + fallback/errorMessage liefert:
-      if (data.fallback && data.errorMessage) {
-        const msg = data.errorMessage ?? "OSR konnte keine Route liefern - es wird nur die Luftlinie angezeigt.";
+      if (data.fallback) {
+        const msg =
+          data.errorMessage ??
+          "ORS konnte keine Route liefern – es wird nur die Luftlinie angezeigt.";
         setFallbackNotice(msg);
         toast({
           variant: "destructive",
           title: "Routenberechnung unvollständig",
           description: msg,
         });
-        // Optional: Debug im Dev‑Mode zeigen
         if (import.meta.env.DEV && data.debug) {
+          // Debug-Hinweis im Dev-Modus
           console.warn("[ORS DEBUG]", data.debug);
-          toast({
-            title: "Debug (DEV)",
-            description: JSON.stringify(data.debug),
-          });
         }
       } else {
-        // Erfolg-Toast mit Quelle der Distanz
-        const src = data.distanceSource === "geometry" ? "Geometrie" : "Zusammenfassung";
+        const src = (data as any).distanceSource === "geometry" ? "Geometrie" : "Zusammenfassung";
         toast({
           title: "Route berechnet",
           description: `Entfernung: ${data.distance} • Fahrzeit: ${data.duration} • Quelle: ${src}`,
         });
       }
 
-      // RouteData setzen (formatiert + numerische Felder übernehmen, falls vorhanden)
+      // --- Distanz-Absicherung im Frontend ---
+      let distanceStr = data.distance ?? "0,0 km";
+      const distanceLooksZero =
+        !distanceStr || distanceStr === "0,0 km" || distanceStr === "0 km" || distanceStr.startsWith("0");
+
+      let ensuredDistanceKm: number | undefined =
+        typeof (data as any).distanceKm === "number"
+          ? (data as any).distanceKm
+          : computeDistanceKmFromGeometry((data as any).geometry) ?? undefined;
+
+      if (distanceLooksZero && ensuredDistanceKm && ensuredDistanceKm > 0) {
+        const fixed = formatKm(ensuredDistanceKm);
+        if (fixed !== "0,0 km") {
+          distanceStr = fixed;
+          toast({
+            title: "Entfernung korrigiert",
+            description: `Aus Geometrie berechnet: ${fixed}`,
+          });
+        }
+      }
+
       setRouteData({
-        distance: data.distance ?? "0,0 km",
+        distance: distanceStr,
         duration: data.duration ?? "0min",
         instructions: data.instructions ?? [],
         geometry: data.geometry,
         waypoints: data.waypoints ?? waypoints,
-        // optional: Zahlen mit durchreichen (für spätere Features)
-        // @ts-ignore
-        distanceMeters: data.distanceMeters,
-        // @ts-ignore
-        distanceKm: data.distanceKm,
-        // @ts-ignore
-        durationSeconds: data.durationSeconds,
+        distanceMeters: (data as any).distanceMeters,
+        distanceKm: ensuredDistanceKm ?? (data as any).distanceKm,
+        durationSeconds: (data as any).durationSeconds,
       });
+
+      console.log("Route berechnet:", data);
     } catch (err: any) {
       console.error("Fehler bei Routenberechnung:", err);
       toast({
@@ -172,6 +244,7 @@ export function RouteSidebar({
     }
   };
 
+  // ------ RENDER ------
   return (
     <div className="w-80 bg-nav-surface border-r border-nav-border h-full overflow-y-auto p-4 space-y-6">
       {/* Mode Selection */}
@@ -236,7 +309,7 @@ export function RouteSidebar({
                 )}
               </div>
               <Input
-                placeholder={`Adresse eingeben...`}
+                placeholder="Adresse eingeben..."
                 value={waypoint.address}
                 onChange={(e) => updateWaypointAddress(waypoint.id, e.target.value)}
                 className="text-sm"
@@ -269,16 +342,12 @@ export function RouteSidebar({
             </div>
 
             <div className="flex items-center justify-between">
-              <Label htmlFor="tolls" className="text-sm">
-                Maut vermeiden
-              </Label>
+              <Label htmlFor="tolls" className="text-sm">Maut vermeiden</Label>
               <Switch id="tolls" checked={avoidTolls} onCheckedChange={setAvoidTolls} />
             </div>
 
             <div className="flex items-center justify-between">
-              <Label htmlFor="highways" className="text-sm">
-                Autobahnen vermeiden
-              </Label>
+              <Label htmlFor="highways" className="text-sm">Autobahnen vermeiden</Label>
               <Switch id="highways" checked={avoidHighways} onCheckedChange={setAvoidHighways} />
             </div>
           </CardContent>
@@ -312,10 +381,8 @@ export function RouteSidebar({
                 <Badge variant="secondary">
                   {routeData.distance && routeData.distance !== "0,0 km"
                     ? routeData.distance
-                    : (routeData as any)?.distanceKm
-                    ? `${(routeData as any).distanceKm
-                        .toFixed(1)
-                        .replace(".", ",")} km`
+                    : typeof (routeData as any).distanceKm === "number"
+                    ? `${(routeData as any).distanceKm.toFixed(1).replace(".", ",")} km`
                     : "–"}
                 </Badge>
               </div>
@@ -329,21 +396,21 @@ export function RouteSidebar({
               Klicken Sie auf &quot;Route berechnen&quot; um Routendetails zu sehen
             </div>
           )}
-      
+
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Zwischenziele:</span>
             <Badge variant="outline">{Math.max(0, waypoints.length - 2)}</Badge>
           </div>
-        
+
           {fallbackNotice && (
             <div className="mt-2 flex items-center gap-2 text-amber-600 text-sm">
               <AlertTriangle className="h-4 w-4" />
               {fallbackNotice}
             </div>
           )}
-      
+
           <Separator className="my-3" />
-        
+
           {routeData ? (
             <div className="space-y-2">
               <h4 className="text-sm font-medium">Navigation</h4>
