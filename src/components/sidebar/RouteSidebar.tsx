@@ -173,9 +173,13 @@ export function RouteSidebar({
       // Debug-Toast mit den wichtigsten Feldern
       toast("Debug Route", 
         {
-          description: `distance: ${data.distance ?? "?"}
-          distanceKm: ${(data as any).distanceKm ?? "?"}
-          geom-type: ${(data as any).geometry?.type || (Array.isArray((data as any).geometry) ? "array" : "?")}`,
+          description: (
+            <pre className="whitespace-pre-wrap text-xs">
+              distance: {data.distance ?? "?"}{"\n"}
+              distanceKm: {(data as any).distanceKm ?? "?"}{"\n"}
+              geom-type: {data.geometry?.type || (Array.isArray(data.geometry) ? "array" : "?")}
+            </pre>
+          ),
         }
       );
 
