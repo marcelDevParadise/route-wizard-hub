@@ -309,7 +309,15 @@ export function RouteSidebar({
             <>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Entfernung:</span>
-                <Badge variant="secondary">{routeData.distance}</Badge>
+                <Badge variant="secondary">
+                  {routeData.distance && routeData.distance !== "0,0 km"
+                    ? routeData.distance
+                    : (routeData as any)?.distanceKm
+                    ? `${(routeData as any).distanceKm
+                        .toFixed(1)
+                        .replace(".", ",")} km`
+                    : "–"}
+                </Badge>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Fahrzeit:</span>
@@ -321,21 +329,21 @@ export function RouteSidebar({
               Klicken Sie auf &quot;Route berechnen&quot; um Routendetails zu sehen
             </div>
           )}
-
+      
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Zwischenziele:</span>
             <Badge variant="outline">{Math.max(0, waypoints.length - 2)}</Badge>
           </div>
-
+        
           {fallbackNotice && (
             <div className="mt-2 flex items-center gap-2 text-amber-600 text-sm">
               <AlertTriangle className="h-4 w-4" />
               {fallbackNotice}
             </div>
           )}
-
+      
           <Separator className="my-3" />
-
+        
           {routeData ? (
             <div className="space-y-2">
               <h4 className="text-sm font-medium">Navigation</h4>
